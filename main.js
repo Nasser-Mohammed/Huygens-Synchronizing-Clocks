@@ -2,7 +2,6 @@
 // Three-body simulation with simple Euler integration
 
 let ctx;
-let G = 1; // Gravitational constant scaled for visualization
 const dt = 0.01;
 let frameCount = 0;
 let simulationTime = 0;
@@ -13,47 +12,32 @@ let height;
 let isDragging = false;
 let bodies = [];
 let cnt = 0;
-let multiplier = 1;
-let zoomFactor = 1; // pixels per unit of distance
 let centerX;
 let centerY;
 let maxTrailLength = 900;
 let stepsPerFrame = 500;
 let defaultSteps = 500;
 
-const trailColorMap = new Map([
-  ["earth", "green"],
-  ["extraterrestrial", "red"],
-  ["neptune", "blue"],
-]);
+let clocks = [];
 
-const celestialObjects = new Map();
-//0.0123/333
-//i scaled down masses from 333,000 to 1000 (max) so divided by 333
-celestialObjects.set('earth', {name: 'earth', stateVector: {}, size: 35, mass: 20, trail: [], trailColor: trailColorMap.get("earth"), inSimulation: false, image: Object.assign(new Image(), {src: "images/earth.png"})});
-celestialObjects.set('neptune', {name: 'neptune', stateVector: {}, size: 35, mass: 25, trail: [], trailColor: trailColorMap.get("neptune"), inSimulation: false, image: Object.assign(new Image(), {src: "images/neptune.png"})});
-celestialObjects.set('extraterrestrial', {name: 'extraterrestrial', stateVector: {}, size: 35, mass: 18, trail: [], trailColor: trailColorMap.get("extraterrestrial"), inSimulation: false, image: Object.assign(new Image(), {src: "images/randomPlanet.png"})});
-let maxPlanetSize = Math.max(celestialObjects.get("earth").size, celestialObjects.get("neptune").size, celestialObjects.get("extraterrestrial").size);
-let defaultEarthMass = 20;
-let defaultNeptuneMass = 25;
-let defaultExtratMass = 18;
-let earthMass = defaultEarthMass;
-let neptuneMass = defaultEarthMass;
-let extratMass = defaultExtratMass;
+class Clock{
+  constructor(theta, angularVelo, length, mass, x, y){
+    this.theta = theta;
+    this.angularVelo = angularVelo;
+    this.length = length;
+    this.mass = mass;
+    this.x;
+    this.y;
+  }
 
-const name2Mass = new Map();
-name2Mass.set("earth", defaultEarthMass);
-name2Mass.set("neptune", defaultNeptuneMass);
-name2Mass.set("extraterrestrial", defaultExtratMass);
+  drawClock(){
+
+  }
+}
+
 
 /*equations of motion:
-For n-bodies, we have n-second order vector differential equations. Usually, vectors for 3D,
-but I am simplifying and only considering planar trajectories so no z-dimension or forces.
-So we have n-2nd order vector equations made up of two ODEs themselves. So, we actually
-have 2*n second order ODEs, which break into 2*2*n = 4n first order ODEs.
-Each body has 2 ODEs, and both are second order so can be broken into 2 ODE in place of that one.
-So we have 4 ODEs per body. Each ODE depends on the state of every other body.
-
+For n pendulums, we have 4n first order ODEs
 */
 
 
@@ -82,9 +66,9 @@ function computeAcceleration(x, y, selfIndex) {
   return { ax, ay };
 }
 
-function updatePlanetsRK4() {
-  for (let i = 0; i < bodies.length; i++) {
-    const p = bodies[i];
+function clockUpdateRK4() {
+  for (let i = 0; i < clocks.length; i++) {
+    const p = clocks[i];
     const { x, y, Xvelocity: vx, Yvelocity: vy } = p.stateVector;
 
     // k1
@@ -161,72 +145,22 @@ function animate(){
   }
 
     for (let i = 0; i < stepsPerFrame; i++) {
-      updatePlanetsRK4();
+      clockUpdateRK4();
     }
-
-    let maxX = Math.max(...bodies.map(b => Math.abs(b.stateVector.x)));
-    let maxY = Math.max(...bodies.map(b => Math.abs(b.stateVector.y)));
-
-    const xWeight = 1.0;   
-    const yWeight = 1.5;   
-
-    let adjustedX = maxX * xWeight;
-    let adjustedY = maxY * yWeight;
-
-
-    const xMargin = 10;
-    const yMargin = 10;
-
-    let zoomX = width / (2 * adjustedX + xMargin);
-    let zoomY = height / (2 * adjustedY + yMargin);
-
-
-    let targetZoom = Math.min(1, zoomX, zoomY);
-    zoomFactor = targetZoom;  
-
-
 
     ctx.fillStyle = "black";
     ctx.fillRect(0, 0, width, height);
-    for (const body of bodies) {
-    updateTrail(body);
-    drawTrail(ctx, body, body.trailColor);
-  }
 
-  drawBodies();
+  drawClocks();
   //console.log("running......");
   animationId = requestAnimationFrame(animate);
 }
 
-
-function drawTrail(ctx, body, color) {
-  ctx.beginPath();
-  for (let i = 0; i < body.trail.length - 1; i++) {
-    const p1 = body.trail[i];
-    const p2 = body.trail[i + 1];
-
-    const s1 = worldToScreen(p1.x, p1.y);
-    const s2 = worldToScreen(p2.x, p2.y);
-    ctx.moveTo(s1.screenX, s1.screenY);
-    ctx.lineTo(s2.screenX, s2.screenY);
-
-  }
-  ctx.strokeStyle = color;
-  ctx.stroke();
-}
-
-function drawBodies(){
-  for(let i = 0; i < bodies.length; i++){
-    const planet = bodies[i];
+function drawClocks(){
+  for(let i = 0; i < clocks.length; i++){
+    const clock = clocks[i];
     //console.log(planet.image.src);
-    const screen = worldToScreen(planet.stateVector.x, planet.stateVector.y);
-    console.log("drawing: ", screen);
     ctx.drawImage(
-      planet.image,
-      screen.screenX - planet.size / 2,
-      screen.screenY - planet.size / 2,
-      planet.size,
-      planet.size
     );
 
 
@@ -234,85 +168,50 @@ function drawBodies(){
   }
 }
 
-function updateTrail(body) {
-  //const maxTrailLength = 15000; // adjust for performance/appearance
-  body.trail.push({ x: body.stateVector.x, y: body.stateVector.y });
+function drawSideSupports(){
+  const supportWidth = 100;
+  const leftX = 250;
+  const supportY = 225;
+  const rightX = width - leftX - supportWidth;
 
-  if (body.trail.length > maxTrailLength) {
-    body.trail.shift();
-  }
+  const supportHeight = height - supportY;
+
+  ctx.fillStyle = "#4B2E14";
+  ctx.fillRect(leftX, supportY, supportWidth, supportHeight);
+  ctx.fillRect(rightX, supportY, supportWidth, supportHeight);
+
 }
 
-function worldToScreen(x, y) {
-    return {
-        screenX: centerX + x * zoomFactor,
-        screenY: centerY - y * zoomFactor
-    };
-}
 
-
-
-function body2Simulation(bodyName, xCoord, yCoord) {
+function clocks2Simulation(xCoord, yCoord) {
     //convert canvas coords to x,y cartesian coords
     //we want x = 0 to correspond to width/2 (the middle, so our graph is centered in the middle of the canvas)
 
     let newX = xCoord - width/2;
     let newY = -yCoord + height/2;
 
-    const body = celestialObjects.get(bodyName);
-    body.stateVector.x = newX;
-    body.stateVector.y = newY;
-    body.stateVector.Xvelocity = 0;
-    body.stateVector.Yvelocity = 0; 
-    body.mass = name2Mass.get(bodyName);
-    bodies.push(body);
-    drawBodies();
+    const body = {};
+    // body.stateVector.x = newX;
+    // body.stateVector.y = newY;
+    // body.stateVector.Xvelocity = 0;
+    // body.stateVector.Yvelocity = 0; 
+    // body.mass = name2Mass.get(bodyName);
+    clocks.push(body);
+    //drawClocks();
 
 }
-
-function toggleMassInputs(disabled) {
-  document.getElementById("earth-mass").disabled = disabled;
-  document.getElementById("neptune-mass").disabled = disabled;
-  document.getElementById("alien-mass").disabled = disabled;
-}
-
 
 
 function startSimulation() {
-  toggleMassInputs(true);
   animate();
-}
-
-function applyMassInputs() {
-  const earthMass = parseFloat(document.getElementById("earth-mass").value);
-  const neptuneMass = parseFloat(document.getElementById("neptune-mass").value);
-  const alienMass = parseFloat(document.getElementById("alien-mass").value);
-
-  if (!isNaN(earthMass)) celestialObjects.get("earth").mass = earthMass;
-  if (!isNaN(neptuneMass)) celestialObjects.get("neptune").mass = neptuneMass;
-  if (!isNaN(alienMass)) celestialObjects.get("extraterrestrial").mass = alienMass;
 }
 
 
 function resetStates(){
-  for(let i = 0; i < bodies.length; i++){
-    const body = bodies[i];
-    body.stateVector = {};
-    body.trail = [];
-    console.log("reset state for: ", body);
-  }
-  bodies = [];
-  let earthX = width/2 + Math.random()*120 - 60;
-  let earthY = height - (1/2.5)*height + Math.random()*120 - 60;
-  let neptuneX = (1/2.5)*width + Math.random()*120 - 60;
-  let neptuneY = (1/2.5)*height + Math.random()*120 - 60;
-  let alienX = width - (1/2.5)*width + Math.random()*120 - 60;
-  let alienY =  (1/2.5)*height + Math.random()*120 - 60;
-
-
-  body2Simulation('earth', earthX, earthY, true);
-  body2Simulation('neptune', neptuneX, neptuneY, true);
-  body2Simulation('extraterrestrial', alienX, alienY, true);
+  clocks = [];
+  clocks2Simulation(0, 0, true);
+  clocks2Simulation(0, 0, true);
+  clocks2Simulation(0, 0, true);
 }
 
 function resetSimulation() {
@@ -321,19 +220,13 @@ function resetSimulation() {
     cancelAnimationFrame(animationId);
     animationId = null;
   }
-  toggleMassInputs(false);
   simulationTime = 0;
   frameCount = 0;
-  zoomFactor = 1;
   stepsPerFrame = defaultSteps;
   const speedSlider = document.getElementById("speed-slider");
   const speedValue = document.getElementById("speed-value");
   speedSlider.value = Math.floor(defaultSteps/100);
   speedValue.textContent = speedSlider.value;
-  stepsPerFrame = defaultSteps;
-  document.getElementById("earth-mass").value = defaultEarthMass;
-  document.getElementById("neptune-mass").value = defaultNeptuneMass;
-  document.getElementById("alien-mass").value = defaultExtratMass;
   ctx.fillStyle = "black";
   ctx.fillRect(0, 0, width, height);
   resetStates();
@@ -341,29 +234,8 @@ function resetSimulation() {
   cnt = 0;
   multiplier = 1;
   document.getElementById("time-display").textContent = "Month: 1";
-  G = 1;
   document.getElementById("start-simulation").textContent = "Click to Start Simulation";
 }
-
-function preloadAllPlanetImages(callback) {
-  const planetNames = ['extraterrestrial', 'earth', 'neptune'];
-  let loaded = 0;
-
-  for (const name of planetNames) {
-    const obj = celestialObjects.get(name);
-    const img = new Image();
-    img.src = obj.image.src;
-    img.onload = () => {
-      obj.image = img;
-      loaded++;
-      if (loaded === planetNames.length) {
-        callback(); // all images are ready
-      }
-    };
-    img.onerror = () => console.error(`Failed to load image for ${name}`);
-  }
-}
-
 
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -375,21 +247,12 @@ document.addEventListener("DOMContentLoaded", () => {
   centerY = height/2
   ctx.fillStyle = "black";
   ctx.fillRect(0, 0, width, height);
-  preloadAllPlanetImages(() => {
-    ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, width, height);
-    resetStates();
-  });
-
-
-//   document.getElementById("modeSelect").addEventListener("change", function (e) {
-//   G = parseFloat(e.target.value);
-// });
+  resetStates();
+  drawSideSupports();
 
     document.getElementById("start-simulation").addEventListener("click", () => {
       const btn = document.getElementById("start-simulation");
       if (!running) {
-        applyMassInputs(); 
         running = true;
         btn.textContent = "Pause";
         startSimulation();
@@ -409,19 +272,6 @@ document.addEventListener("DOMContentLoaded", () => {
     stepsPerFrame = Math.floor(parseInt(speedSlider.value)*100);
     speedValue.textContent = Math.floor(stepsPerFrame/100);
   });
-
-  // document.getElementById("start-simulation").addEventListener("click", () => {
-  //   const btn = document.getElementById("start-simulation");
-  //   if (!running) {
-  //     running = true;
-  //     btn.textContent = "Pause";
-  //     startSimulation();
-  //   } else {
-  //     running = false;
-  //     cancelAnimationFrame(animationId);
-  //     btn.textContent = "Resume";
-  //   }
-  // });
 
   document.getElementById("reset").addEventListener("click", () => {
     resetSimulation();

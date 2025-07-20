@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Huygen's Swinging Clock Synchronization Simulation</title>
-  <link rel="icon" type="image/png" href="images/neptune.png" sizes="48x48">
+  <link rel="icon" type="image/png" href="images/clocks.png" sizes="48x48">
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
@@ -18,12 +18,12 @@
     <div>
         \[
         \begin{aligned}
-          \ddot{\boldsymbol{r}}_1 &= -Gm_2\frac{\boldsymbol{r_1}-\boldsymbol{r_2}}{|\boldsymbol{r_1}-\boldsymbol{r_2}|^3} -Gm_3\frac{\boldsymbol{r_1}-\boldsymbol{r_3}}{|\boldsymbol{r_1}-\boldsymbol{r_3}|^3}\\
+          &-\ddot{x_i}\cos(\theta_i) = \ddot{\theta}_i \gamma\dot{\theta}_i + \frac{g}{l}\sin(\theta_i) \\
           \\
-          \ddot{\boldsymbol{r}}_2 &= -Gm_1\frac{\boldsymbol{r_2}-\boldsymbol{r_1}}{|\boldsymbol{r_2}-\boldsymbol{r_1}|^3} -Gm_3\frac{\boldsymbol{r_2}-\boldsymbol{r_3}}{|\boldsymbol{r_2}-\boldsymbol{r_3}|^3}\\
+          &m_b\ddot{x}_i = -k(x_i - x_{i-1}) - k(x_i - x_{i+1}) - ml(\ddot{\theta}_i\cos(\theta_i) - \dot{\theta_i^2}\sin(\theta_i))\\
           \\
-          \ddot{\boldsymbol{r}}_3 &= -Gm_1\frac{\boldsymbol{r_3}-\boldsymbol{r_1}}{|\boldsymbol{r_3}-\boldsymbol{r_1}|^3} -Gm_2\frac{\boldsymbol{r_3}-\boldsymbol{r_2}}{|\boldsymbol{r_3}-\boldsymbol{r_2}|^3}
-        \end{aligned}
+          &M\dot{X} = -m\sum_{i = 1}^{N}(\ddot{\theta_i}\cos(\theta_i) - \dot{\theta_i^2}\sin(\theta_i))
+          \end{aligned}
         \]
       </div>
       <hr>
