@@ -18,29 +18,27 @@
     <div>
         \[
         \begin{aligned}
-          &-\ddot{x_i}\cos(\theta_i) = \ddot{\theta}_i \gamma\dot{\theta}_i + \frac{g}{l}\sin(\theta_i) \\
+          \ddot{x} &= \frac{mL\sum_{i=1}^2(\omega_i^2\sin(\theta_i) + g\sin(\theta_i)\cos(\theta_i))}{M+2m+m\sum_{i=1}^2\cos^2(\theta_i)} \\
           \\
-          &m_b\ddot{x}_i = -k(x_i - x_{i-1}) - k(x_i - x_{i+1}) - ml(\ddot{\theta}_i\cos(\theta_i) - \dot{\theta_i^2}\sin(\theta_i))\\
+          \ddot{\theta_1} &= \frac{-g\sin(\theta_1) - \ddot{x}\cos(\theta_1)}{L}\\
           \\
-          &M\dot{X} = -m\sum_{i = 1}^{N}(\ddot{\theta_i}\cos(\theta_i) - \dot{\theta_i^2}\sin(\theta_i))
+          \ddot{\theta_2} &= \frac{-g\sin(\theta_2) - \ddot{x}\cos(\theta_2)}{L}\\
           \end{aligned}
         \]
       </div>
       <hr>
     <br>
-    <button id = "start-simulation">Click to start simulation</button>
+    <button id = "start-simulation">Click to Start Simulation</button>
     <button id = "reset">Reset Simulation</button>
     </br>
 
   <br>
   <br>
       <label for="speed-slider">Simulation Speed:</label>
-    <input type="range" id="speed-slider" min="1" max="40" value="5">
+    <input type="range" id="speed-slider" min="1" max="10" value="5">
     <span id="speed-value">5</span>
     <br>
 
-
-    <div id="time-display">Month: 1</div>
     <div class="canvas-container">
         <canvas id="simCanvas" width="1900" height="1300"></canvas>
       </div>

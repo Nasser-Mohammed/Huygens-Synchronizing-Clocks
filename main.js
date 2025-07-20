@@ -2,7 +2,8 @@
 // Three-body simulation with simple Euler integration
 
 let ctx;
-const dt = 0.01;
+const dt = 0.0001;
+const g = 9.81;
 let frameCount = 0;
 let simulationTime = 0;
 let animationId = null;
@@ -15,10 +16,34 @@ let cnt = 0;
 let centerX;
 let centerY;
 let maxTrailLength = 900;
-let stepsPerFrame = 500;
-let defaultSteps = 500;
+let stepsPerFrame = 2500;
+let defaultSteps = 2500;
+let multiplier = 1;
+
+let clockBoxWidth = 250;
+let clockBoxHeight = 350;
+let clockRadius = Math.floor(Math.min(clockBoxHeight, clockBoxWidth)/2);
+
+let pendulumLength = 250;
+let pendulumMass = 50;
+let weightRadius = 50;
 
 let clocks = [];
+let xDot = 0;
+
+let M = 5;
+let m = 5;
+let L = pendulumLength;
+
+
+class Beam{
+  constructor(x,y){
+    this.x = x;
+    this.y = y;
+    this.velocity = 0;
+    this.acceleration = 0;
+  }
+}
 
 class Clock{
   constructor(theta, angularVelo, length, mass, x, y){
@@ -26,13 +51,25 @@ class Clock{
     this.angularVelo = angularVelo;
     this.length = length;
     this.mass = mass;
-    this.x;
-    this.y;
+    //these are in canvas coords
+    this.x = x; //middle of clock box body
+    this.y = y; //middle of clock box body
+    //
+    this.clockR = clockRadius;
+    this.smallHandR = clockRadius/2;
+    this.phase1 = Math.PI/2; //angle from vertical, should range from -pi/12 to pi/12
+    this.phase2 = Math.PI/2;
+    this.flag = false;
+    // this.bigHandXstart = x;
+    // this.bigHandYstart = y + clockBoxHeight/2;
+    // this.bigHandXend = x;
+    // this.bigHandYend = bigHandYstart - clockRadius;
+    // this.smallHandXstart = x;
+    // this.smallHandYstart = y + clockBoxHeight/2;
+    // this.smallHandXend = x;
+    // this.smallHandYend = bigHandYstart - clockRadius;
   }
 
-  drawClock(){
-
-  }
 }
 
 
@@ -40,73 +77,101 @@ class Clock{
 For n pendulums, we have 4n first order ODEs
 */
 
-
-function computeAcceleration(x, y, selfIndex) {
-  let ax = 0;
-  let ay = 0;
-
-  for (let j = 0; j < bodies.length; j++) {
-    if (j === selfIndex) continue;
-    const other = bodies[j];
-
-    const dx = other.stateVector.x - x;
-    const dy = other.stateVector.y - y;
-    const softening = maxPlanetSize * 4; // or 3x
-    const distSq = dx * dx + dy * dy + softening * softening;
-    const dist = Math.sqrt(distSq);
-
-
-
-    const force = G * other.mass / (distSq * dist); // equivalent to Gm / r^3
-
-    ax += force * dx;
-    ay += force * dy;
-  }
-
-  return { ax, ay };
+function getState(clocks, xDot) {
+  // Returns a deep copy of current state variables
+  const thetas = clocks.map(clock => clock.theta);
+  const angularVelos = clocks.map(clock => clock.angularVelo);
+  return { thetas, angularVelos, xDot };
 }
 
-function clockUpdateRK4() {
-  for (let i = 0; i < clocks.length; i++) {
-    const p = clocks[i];
-    const { x, y, Xvelocity: vx, Yvelocity: vy } = p.stateVector;
 
-    // k1
-    const a1 = computeAcceleration(x, y, i);
-    const k1vx = a1.ax * dt;
-    const k1vy = a1.ay * dt;
-    const k1x = vx * dt;
-    const k1y = vy * dt;
+function derivatives(state, M, m, L, g) {
+  const { thetas, omegas, xDot } = state;
+  const n = thetas.length;
+  const thetaDoubleDots = new Array(n);
 
-    // k2
-    const a2 = computeAcceleration(x + k1x / 2, y + k1y / 2, i);
-    const k2vx = a2.ax * dt;
-    const k2vy = a2.ay * dt;
-    const k2x = (vx + k1vx / 2) * dt;
-    const k2y = (vy + k1vy / 2) * dt;
+  const damping = 1.0; // Try values like 0.5, 1.0, 2.0
+ // Beam damping coefficient
 
-    // k3
-    const a3 = computeAcceleration(x + k2x / 2, y + k2y / 2, i);
-    const k3vx = a3.ax * dt;
-    const k3vy = a3.ay * dt;
-    const k3x = (vx + k2vx / 2) * dt;
-    const k3y = (vy + k2vy / 2) * dt;
-
-    // k4
-    const a4 = computeAcceleration(x + k3x, y + k3y, i);
-    const k4vx = a4.ax * dt;
-    const k4vy = a4.ay * dt;
-    const k4x = (vx + k3vx) * dt;
-    const k4y = (vy + k3vy) * dt;
-
-    // Final position and velocity update
-    p.stateVector.x += (k1x + 2 * k2x + 2 * k3x + k4x) / 6;
-    p.stateVector.y += (k1y + 2 * k2y + 2 * k3y + k4y) / 6;
-    p.stateVector.Xvelocity += (k1vx + 2 * k2vx + 2 * k3vx + k4vx) / 6;
-    p.stateVector.Yvelocity += (k1vy + 2 * k2vy + 2 * k3vy + k4vy) / 6;
-
-    //console.log("new position: ", p.stateVector.x, ", ", p.stateVector.y);
+  // Compute denominator for beam equation
+  let denominator = M;
+  for (let i = 0; i < n; i++) {
+    denominator += m * L * L * Math.cos(thetas[i]) ** 2;
   }
+
+  // Compute numerator for beam acceleration
+  let numerator = 0;
+  for (let i = 0; i < n; i++) {
+    numerator += m * L * (
+      omegas[i] * omegas[i] * Math.sin(thetas[i]) +
+      g * Math.sin(thetas[i]) * Math.cos(thetas[i])
+    );
+  }
+
+  //  Add damping force from beam velocity
+  numerator -= damping * xDot;
+
+  const xddot = numerator / denominator;
+
+  // Pendulums: NO damping
+  for (let i = 0; i < n; i++) {
+    thetaDoubleDots[i] = (-g * Math.sin(thetas[i]) - xddot * Math.cos(thetas[i])) / L;
+  }
+
+  return {
+    dThetas: omegas,
+    dOmegas: thetaDoubleDots,
+    dxDot: xddot
+  };
+}
+
+
+function rk4Step(clocks, xDot, dt, M, m, L, g) {
+  const n = clocks.length;
+
+  // Initial state
+  const theta0 = clocks.map(c => c.theta);
+  const omega0 = clocks.map(c => c.angularVelo);
+  const xDot0 = xDot;
+
+  function getState(theta, omega, xDotVal) {
+    return { thetas: theta, omegas: omega, xDot: xDotVal };
+  }
+
+  // k1
+  const k1 = derivatives(getState(theta0, omega0, xDot0), M, m, L, g);
+
+  // k2 input
+  const theta1 = theta0.map((t, i) => t + dt * k1.dThetas[i] / 2);
+  const omega1 = omega0.map((w, i) => w + dt * k1.dOmegas[i] / 2);
+  const xDot1 = xDot0 + dt * k1.dxDot / 2;
+  const k2 = derivatives(getState(theta1, omega1, xDot1), M, m, L, g);
+
+  // k3 input
+  const theta2 = theta0.map((t, i) => t + dt * k2.dThetas[i] / 2);
+  const omega2 = omega0.map((w, i) => w + dt * k2.dOmegas[i] / 2);
+  const xDot2 = xDot0 + dt * k2.dxDot / 2;
+  const k3 = derivatives(getState(theta2, omega2, xDot2), M, m, L, g);
+
+  // k4 input
+  const theta3 = theta0.map((t, i) => t + dt * k3.dThetas[i]);
+  const omega3 = omega0.map((w, i) => w + dt * k3.dOmegas[i]);
+  const xDot3 = xDot0 + dt * k3.dxDot;
+  const k4 = derivatives(getState(theta3, omega3, xDot3), M, m, L, g);
+
+  // Final update
+  for (let i = 0; i < n; i++) {
+    clocks[i].theta += dt / 6 * (
+      k1.dThetas[i] + 2 * k2.dThetas[i] + 2 * k3.dThetas[i] + k4.dThetas[i]
+    );
+
+    clocks[i].angularVelo += dt / 6 * (
+      k1.dOmegas[i] + 2 * k2.dOmegas[i] + 2 * k3.dOmegas[i] + k4.dOmegas[i]
+    );
+  }
+
+  // Update xDot
+  return xDot + dt / 6 * (k1.dxDot + 2 * k2.dxDot + 2 * k3.dxDot + k4.dxDot);
 }
 
 
@@ -116,61 +181,150 @@ function euclideanDistance(x1, y1, x2, y2){
 
 
 function animate(){
-  cnt++;
-  if (cnt%280 === 0 || cnt >= 280){
-    console.log("one month cycle");
-    cnt = 0;
-    multiplier++;
-    if (multiplier < 12){
-    document.getElementById("time-display").textContent = "Month: " + (Math.floor(multiplier)).toString();
-    }
-    else{
-      if(Math.floor(multiplier/12) === 1){
-        if (multiplier%12 === 1){
-        document.getElementById("time-display").textContent = (Math.floor(multiplier/12)).toString() + " year and " + ((multiplier%12).toFixed()).toString() + " month";
-        }
-        else{
-          document.getElementById("time-display").textContent = (Math.floor(multiplier/12)).toString() + " year and " + ((multiplier%12).toFixed()).toString() + " months";
-        }
-      }
-      else{
-        if (multiplier%12 ===1){
-          document.getElementById("time-display").textContent = (Math.floor(multiplier/12)).toString() + " years and " + ((multiplier%12).toFixed()).toString() + " month";
-        }
-        else{
-          document.getElementById("time-display").textContent = (Math.floor(multiplier/12)).toString() + " years and " + ((multiplier%12).toFixed()).toString() + " months";
-        }
-      }
-    }
-  }
 
     for (let i = 0; i < stepsPerFrame; i++) {
-      clockUpdateRK4();
+      xDot = rk4Step(clocks, xDot, dt, M, m, L, g);
     }
+  ctx.fillStyle = "black";
+  ctx.fillRect(0, 0, width, height);
+  updateHands();
 
-    ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, width, height);
-
-  drawClocks();
+  drawStructure(false);
   //console.log("running......");
   animationId = requestAnimationFrame(animate);
 }
 
-function drawClocks(){
+function updateHands(){
   for(let i = 0; i < clocks.length; i++){
     const clock = clocks[i];
-    //console.log(planet.image.src);
-    ctx.drawImage(
-    );
+    if(clock.theta < 0 && clock.flag === false){
+      clock.flag = true;
+      clock.phase1 += Math.PI/60;
+      clock.phase2 += Math.PI/(60**2);
+    }
+    if(clock.theta >= 0){
+      clock.flag = false;
+    }
+  }
 
+}
 
+function drawPendulums(){
+  for(let i = 0; i < clocks.length; i++){
+    const clock = clocks[i];
+    //bottom x,y point of box where pendulum will connect
+    const pointX = clock.x;
+    const pointY = clock.y + clockBoxHeight;
 
+    const length = clock.length;
+    const theta = clock.theta;
+
+    const visualScale = 15;
+    const displayTheta = clock.theta * visualScale;
+
+    //theta is angle from vertical so
+    //theta = theta_x - pi/2
+    //where theta_x is natural theta from x-axis
+    //then cos(theta) = cos(theta_x - pi/2) = sin(theta)
+    //similarly sin(theta) = sin(theta_x - pi/2) = -cos(theta)
+    const endX = pointX + length*Math.sin(displayTheta);
+    
+    //this would be the correct equation for y: const endY = pointY - length*Math.cos(theta);
+    //except y is flipped on the canvas, so
+    const endY = pointY + length*Math.cos(displayTheta);
+
+    ctx.beginPath();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "red";
+    ctx.moveTo(pointX, pointY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+
+    //draw weighted blob at end
+    ctx.beginPath();
+    ctx.fillStyle = "#9e7e38";
+    ctx.moveTo(endX, endY);
+    ctx.arc(endX, endY, weightRadius, 0, 2*Math.PI, true);
+    ctx.fill();
   }
 }
 
-function drawSideSupports(){
-  const supportWidth = 100;
-  const leftX = 250;
+//will work on initialization or in animation loop
+function drawClockHands(){
+  for(let i = 0; i < clocks.length; i++){
+    const clock = clocks[i];
+    const centerX = clock.x;
+    const centerY = clock.y + clockBoxHeight/2;
+    const bigX = clock.clockR*Math.cos(clock.phase1);
+    const bigY = clock.clockR*Math.sin(clock.phase1);
+    const smallX = clock.smallHandR*Math.cos(clock.phase2);
+    const smallY = clock.smallHandR*Math.sin(clock.phase2);
+
+    ctx.beginPath();
+    ctx.lineWidth = 2
+    ctx.strokeStyle = "black";
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(centerX - bigX, centerY - bigY);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.lineWidth = 4;
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(centerX - smallX, centerY - smallY);
+    ctx.stroke()
+  }
+}
+
+function drawHook(x, y) {
+  ctx.strokeStyle = "#333";
+  ctx.lineWidth = 6;
+  const straightLength = 180;
+  const radius = 20;
+  ctx.beginPath();
+  ctx.moveTo(x, y);             // Top of the hook
+  ctx.lineTo(x, y + straightLength);        // Vertical stem
+  ctx.arc(x, y + straightLength + radius, radius, -Math.PI / 2, Math.PI / 2, false); // Curve to right
+  ctx.stroke();
+  return [x, y + straightLength + radius*2, radius];
+}
+
+function drawClock(x,y, radius){
+  //make many clock bodies
+  ctx.fillStyle = "#44270cff";
+  const clockWidth = clockBoxWidth;
+  const clockHeight = clockBoxHeight;
+  ctx.fillRect(x -clockWidth/2, y , clockWidth, clockHeight);
+
+  //make small hook for spring hook above
+  ctx.strokeStyle = "#4B2E14";
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(x - radius/2,y)
+  ctx.arc(x, y, radius/2, Math.PI, 0, false);
+  ctx.stroke();
+
+  //draw clock 
+  const clockR = clockRadius
+  ctx.strokeStyle = "black";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(x, y + clockHeight/2, clockR, 0, 2*Math.PI, false);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.fillStyle = "black"
+  ctx.arc(x, y + clockHeight/2, 10, 0, 2*Math.PI, false);
+  ctx.fill();
+}
+
+
+function drawStructure(init){
+  //clear canvas
+  ctx.fillStyle = "black";
+  ctx.fillRect(0, 0, width, height);
+
+  //draw side supports for the plank
+  const supportWidth = 85;
+  const leftX = 180;
   const supportY = 225;
   const rightX = width - leftX - supportWidth;
 
@@ -180,27 +334,41 @@ function drawSideSupports(){
   ctx.fillRect(leftX, supportY, supportWidth, supportHeight);
   ctx.fillRect(rightX, supportY, supportWidth, supportHeight);
 
+  //now draw the plank the clocks hang from
+  const extraSideSapce = 250;
+  const plankWidth = rightX - leftX + supportWidth + extraSideSapce;
+  const plankHeight = 50;
+  const plankX = leftX - extraSideSapce/2;
+  const plankY = supportY - plankHeight;
+  ctx.fillStyle = "	#81673dff";
+  ctx.fillRect(plankX, plankY, plankWidth, plankHeight);
+
+  //draw three hooks onto the plank at even intervals
+  const space = (rightX - leftX - supportWidth)/3
+  const x1 = leftX + supportWidth + space/2;
+  const y1 = plankY;
+  const x2 = x1 + space;
+  const y2 = y1;
+  const x3 = x2 + space;
+  const y3 = y1;
+  
+  const [endX1, endY1, r1] = drawHook(x1,y1);
+  //const [endX2, endY2, r2] = drawHook(x2,y2);
+  const [endX3, endY3, r3] = drawHook(x3,y3);
+  drawClock(endX1, endY1, r1);
+  //drawClock(endX2, endY2, r2);
+  drawClock(endX3, endY3, r3);
+  if (init) {
+    const clock1 = new Clock((Math.random() - Math.PI/36) * Math.PI/36, 0, pendulumLength, pendulumMass, endX1, endY1);
+    //const clock2 = new Clock((Math.random() - Math.PI/72) * Math.PI/72, 0, pendulumLength, pendulumMass, endX2, endY2);
+    const clock3 = new Clock((Math.random() - Math.PI/36) * Math.PI/36, 0, pendulumLength, pendulumMass, endX3, endY3);
+    clocks.push(clock1);
+    //clocks.push(clock2);
+    clocks.push(clock3);
+   }
+  drawClockHands();
+  drawPendulums();
 }
-
-
-function clocks2Simulation(xCoord, yCoord) {
-    //convert canvas coords to x,y cartesian coords
-    //we want x = 0 to correspond to width/2 (the middle, so our graph is centered in the middle of the canvas)
-
-    let newX = xCoord - width/2;
-    let newY = -yCoord + height/2;
-
-    const body = {};
-    // body.stateVector.x = newX;
-    // body.stateVector.y = newY;
-    // body.stateVector.Xvelocity = 0;
-    // body.stateVector.Yvelocity = 0; 
-    // body.mass = name2Mass.get(bodyName);
-    clocks.push(body);
-    //drawClocks();
-
-}
-
 
 function startSimulation() {
   animate();
@@ -209,9 +377,7 @@ function startSimulation() {
 
 function resetStates(){
   clocks = [];
-  clocks2Simulation(0, 0, true);
-  clocks2Simulation(0, 0, true);
-  clocks2Simulation(0, 0, true);
+  drawStructure(true);
 }
 
 function resetSimulation() {
@@ -225,7 +391,7 @@ function resetSimulation() {
   stepsPerFrame = defaultSteps;
   const speedSlider = document.getElementById("speed-slider");
   const speedValue = document.getElementById("speed-value");
-  speedSlider.value = Math.floor(defaultSteps/100);
+  speedSlider.value = Math.floor(defaultSteps/500);
   speedValue.textContent = speedSlider.value;
   ctx.fillStyle = "black";
   ctx.fillRect(0, 0, width, height);
@@ -245,10 +411,7 @@ document.addEventListener("DOMContentLoaded", () => {
   width = ctx.canvas.width;
   centerX = width/2;
   centerY = height/2
-  ctx.fillStyle = "black";
-  ctx.fillRect(0, 0, width, height);
-  resetStates();
-  drawSideSupports();
+  drawStructure(true);
 
     document.getElementById("start-simulation").addEventListener("click", () => {
       const btn = document.getElementById("start-simulation");
@@ -266,11 +429,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const speedSlider = document.getElementById("speed-slider");
   const speedValue = document.getElementById("speed-value");
-  stepsPerFrame = Math.floor(parseInt(speedSlider.value)*100)
+  stepsPerFrame = Math.floor(parseInt(speedSlider.value))*500
 
   speedSlider.addEventListener("input", () => {
-    stepsPerFrame = Math.floor(parseInt(speedSlider.value)*100);
-    speedValue.textContent = Math.floor(stepsPerFrame/100);
+    stepsPerFrame = Math.floor(parseInt(speedSlider.value)*500);
+    speedValue.textContent = Math.floor(stepsPerFrame/500);
   });
 
   document.getElementById("reset").addEventListener("click", () => {
